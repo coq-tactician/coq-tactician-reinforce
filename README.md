@@ -110,6 +110,7 @@ The following settings govern the data that Coq will send to the server:
 - `Set Tactician Neural Metadata` adds text-based metadata to when communicating in graph-mode, such as
   hypothesis names, textual representation of proof states and textual representations of definition.
   This will slow down the communication protocol, and should only be enabled for debugging, or when otherwise needed.
+
 To let Coq take care of starting and stopping the server, use the command
 ```
 Set Tactician Neural Executable "external-server-executable --argument1 --argument2".
@@ -179,7 +180,7 @@ This repository has an OCaml component that should be installed through the Opam
 package manager and a Python component that should be installed through the Pip
 package manager. Additionally, some extra dependencies are needed:
 - Opam 2.1.x
-- Capt'n Proto >= 0.8
+- Cap'n Proto >= 0.8
 - XXHash >= 0.8
 - Graphviz
 - A reasonable set of development packages like git, bash, gmp, c/c++ compiler
@@ -194,7 +195,8 @@ git clone --recurse-submodules git@github.com:coq-tactician/coq-tactician-api.gi
 cd coq-tactician-api
 conda env create -f environment.yml
 conda activate tactician
-export CPATH="$CONDA_PREFIX:$CPATH" # Needed by cmake to find conda headers
+conda env config vars set CPATH=${CONDA_PREFIX}/include:${CPATH}
+conda activate tactician
 ```
 
 On Ubuntu 22.04 or newer, you can get the required packages as follows (older versions of Ubuntu
