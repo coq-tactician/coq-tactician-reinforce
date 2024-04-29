@@ -10,7 +10,7 @@ try:
 except ImportError:
     import importlib.resources as ilr
 
-from pytact.data_reader import data_reader
+from pytact.data_reader import data_reader, GlobalContextMessage, ProofState, CheckAlignmentMessage
 from pytact.graph_visualize_browse import (
     GraphVisualizationData, GraphVisualizator, UrlMaker, Settings, GraphVisualizationOutput)
 
@@ -36,7 +36,10 @@ def create_app(dataset_path: Path) -> Sanic:
     context_manager = ExitStack()
     template_path = ilr.files('pytact') / 'templates/'
     app.config.TEMPLATING_PATH_TO_TEMPLATES = context_manager.enter_context(ilr.as_file(template_path))
-    app.ctx.gvd = GraphVisualizationData(context_manager.enter_context(data_reader(dataset_path)))
+    if isinstance(dataset_path, Path):
+        app.ctx.gvd = GraphVisualizationData(context_manager.enter_context(data_reader(dataset_path)))
+    else:
+        app.ctx.gvd = dataset_path
 
     @app.after_server_stop
     async def teardown(app):
@@ -109,6 +112,48 @@ def create_app(dataset_path: Path) -> Sanic:
         return post_process(gv.folder(Path()), query)
 
     return app
+
+
+async def wrap_visualization(context : GlobalContextMessage) -> GlobalContextMessage:
+    app = create_app(GraphVisualizationData(dict()))
+
+    server = await app.create_server(
+        port=8000, host="0.0.0.0", return_asyncio_server=True
+    )
+
+    await server.startup()
+    await server.start_serving()
+
+    async def wrapper(context, stack):
+        data = { Path(f"Slice{i}.bin") : d for i, d in enumerate(stack)}
+        app.ctx.gvd = GraphVisualizationData(data)
+        prediction_requests = context.prediction_requests
+        async for msg in prediction_requests:
+            # Redirect any exceptions to Coq. Additionally, deal with CancellationError
+            # thrown when a request from Coq is cancelled
+            async with context.redirect_exceptions(Exception):
+                if isinstance(msg, ProofState):
+                    resp = yield msg
+                    yield
+                    await prediction_requests.asend(resp)
+                elif isinstance(msg, CheckAlignmentMessage):
+                    resp = yield msg
+                    yield
+                    await prediction_requests.asend(resp)
+                elif isinstance(msg, GlobalContextMessage):
+                    yield GlobalContextMessage(msg.definitions,
+                                    msg.tactics,
+                                    msg.log_annotation,
+                                    wrapper(msg, stack + [msg.definitions]),
+                                    msg.redirect_exceptions)
+                else:
+                    raise Exception(f"Capnp protocol error {msg}")
+
+    return GlobalContextMessage(context.definitions,
+                    context.tactics,
+                    context.log_annotation,
+                    wrapper(context, []),
+                    context.redirect_exceptions)
 
 def main():
 

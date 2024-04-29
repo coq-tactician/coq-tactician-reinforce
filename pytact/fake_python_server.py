@@ -10,6 +10,7 @@ from pytact.data_reader import (capnp_message_generator, ProofState,
                                 TacticPredictionGraph, TacticPredictionsGraph,
                                 TacticPredictionText, TacticPredictionsText,
                                 GlobalContextMessage, CheckAlignmentMessage, CheckAlignmentResponse)
+from pytact.visualisation_webserver import wrap_visualization
 
 async def text_prediction_loop(context : GlobalContextMessage):
     tactics = [ 'idtac "is it working?"', 'idtac "yes it is working!"', 'auto' ]
@@ -69,8 +70,11 @@ async def graph_prediction_loop(context : GlobalContextMessage, level):
                 raise Exception(f"Capnp protocol error {msg}")
 
 
+
 async def run_session(args, record_file, capnp_stream):
     messages_generator = capnp_message_generator(capnp_stream, args.rpc, record_file)
+    if args.with_visualization:
+        messages_generator = await wrap_visualization(messages_generator)
     if args.mode == 'text':
         print('Python server running in text mode')
         await text_prediction_loop(messages_generator)
@@ -102,6 +106,8 @@ async def server():
                         'replayed through "pytact-fake-coq"')
     parser.add_argument('--rpc', action='store_true', default = False,
                         help='Communicate through Cap\'n Proto RPC.')
+    parser.add_argument('--with-visualization', action='store_true', default = False,
+                        help='Launch a visualization webserver')
     args = parser.parse_args()
 
     if args.record_file is not None:

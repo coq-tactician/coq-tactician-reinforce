@@ -1360,6 +1360,10 @@ cdef class OnlineDefinitionsReader:
         """
         return Definition._group_by_clusters(self.definitions(full))
 
+    def node_by_id(self, nodeid: NodeId) -> Node:
+        """Lookup a node inside of this reader by it's local node-id. This is a low-level function."""
+        return Node.init(self.graph_index.nodes.size() - 1, nodeid, &self.graph_index)
+
 @contextmanager
 def online_definitions_initialize(OnlineDefinitionsReader stack,
                                   GlobalContextAddition_Reader init) -> Generator[OnlineDefinitionsReader, None, None]:

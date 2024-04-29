@@ -50,8 +50,6 @@ let rpc_option = declare_bool_option ~name:"RPC" ~default:false
 open Stdint
 module TacticMap = Map.Make(struct type t = int64 let compare = Stdint.Int64.compare end)
 
-let last_model = Summary.ref ~name:"neural-learner-lastmodel" TacticMap.empty
-
 type location = int
 module Hashable = struct
   type t = location
@@ -234,7 +232,7 @@ type context_stack =
   { stack : context_state list
   ; stack_size : int }
 
-let update_context_stack id tacs env { stack_size; stack } =
+let update_context_stack id tacs env_extra env { stack_size; stack } =
   let state, old_constants, old_inducives, old_section = match stack with
     | [] ->
       let (empty_state, ()), _ = CICGraphMonad.run_empty (CICGraphMonad.return ())
@@ -280,7 +278,6 @@ let update_context_stack id tacs env { stack_size; stack } =
       let open Monad.Make(CICGraphMonad) in
 
       let open GB in
-      let env_extra = Id.Map.empty, Cmap.empty in
       let updater =
         let* () = Cset.fold (fun c acc ->
             acc >> let+ _ = gen_const env env_extra c in ()) new_constants (return ()) in
@@ -337,13 +334,13 @@ let sync_context_stack add_global_context =
   let id = ref 0 in
   let remote_state = ref [] in
   let remote_stack_size = ref 0 in
-  fun ?(keep_cache=true) tacs env ->
+  fun ?(keep_cache=true) tacs env_extra env ->
     if debug_option () then
       Feedback.msg_notice Pp.(
           str "old remote stack : " ++ prlist_with_sep (fun () -> str "-") int !remote_state ++ fnl () ++
           str "old local stack : " ++ prlist_with_sep (fun () -> str "-")
             (fun { id; _ } -> int id) !context_stack.stack);
-    let state, ({ stack_size; stack } as cache) = update_context_stack !id tacs env !context_stack in
+    let state, ({ stack_size; stack } as cache) = update_context_stack !id tacs env_extra env !context_stack in
     if keep_cache then
       context_stack := cache;
     if debug_option () then
@@ -414,12 +411,13 @@ let connect_socket my_socket =
 
 type connection =
   { capnp_connection : capnp_connection
-  ; sync_context_stack : ?keep_cache:bool -> (glob_tactic_expr * location) TacticMap.t -> Environ.env ->
+  ; sync_context_stack : ?keep_cache:bool -> (glob_tactic_expr * location) TacticMap.t ->
+      env_extra -> Environ.env ->
       CICGraphMonad.state * int }
 
 type communicator =
   { add_global_context : (Api.Builder.GlobalContextAddition.t -> unit) -> unit
-  ; sync_context_stack : ?keep_cache:bool -> (glob_tactic_expr * location) TacticMap.t -> Environ.env ->
+  ; sync_context_stack : ?keep_cache:bool -> (glob_tactic_expr * location) TacticMap.t -> env_extra -> Environ.env ->
       CICGraphMonad.state * int
   ; request_prediction : (Api.Builder.PredictionRequest.t -> unit) ->
       (Graph_api.ro, Api.Reader.Prediction.t, Api.Reader.array_t) Capnp.Array.t
@@ -597,71 +595,15 @@ let get_communicator =
     | Some comm -> comm
 
 
-let check_neural_alignment () =
-  let { sync_context_stack; check_alignment; _ } = get_communicator () in
-  let module Request = Api.Builder.PredictionProtocol.Request in
-  let module Response = Api.Reader.PredictionProtocol.Response in
-  let env = Global.env () in
-  let tacs = !last_model in
-  let state, stack_size = sync_context_stack ~keep_cache:false tacs env in
-  let request = Request.init_root () in
-  Request.check_alignment_set request;
-  let unaligned_tacs, unaligned_defs = check_alignment () in
-  let find_global_argument = find_global_argument state in
-  let unaligned_tacs = Capnp.Array.map_list ~f:(fun t -> fst @@ find_tactic tacs t) unaligned_tacs in
-  let unaligned_defs = Capnp.Array.map_list ~f:(fun node ->
-      let sid = stack_size - 1 - Api.Reader.Node.dep_index_get node in
-      let nid = Api.Reader.Node.node_index_get_int_exn node in
-      find_global_argument (sid, nid)) unaligned_defs in
-  let tacs_msg = if CList.is_empty unaligned_tacs then Pp.mt () else
-      Pp.(fnl () ++ str "Unaligned tactics: " ++ fnl () ++
-          prlist_with_sep fnl (Pptactic.pr_glob_tactic env) unaligned_tacs) in
-  let defs_msg =
-    let open Tactic_one_variable in
-    if CList.is_empty unaligned_defs then Pp.mt () else
-      Pp.(fnl () ++ str "Unaligned definitions: " ++ fnl () ++
-          prlist_with_sep fnl
-            (function
-              | TVar id -> Id.print id
-              | TRef r -> Libnames.pr_path @@ Nametab.path_of_global r
-              | TOther -> Pp.mt ())
-            unaligned_defs) in
-  let def_count = Id.Map.cardinal state.section_nodes +
-                  Cmap.cardinal state.definition_nodes.constants +
-                  Indmap.cardinal state.definition_nodes.inductives +
-                  Constrmap.cardinal state.definition_nodes.constructors +
-                  ProjMap.cardinal state.definition_nodes.projections in
-  Feedback.msg_notice Pp.(
-      str "There are " ++ int (List.length unaligned_tacs) ++ str "/" ++
-      int (TacticMap.cardinal tacs) ++ str " unaligned tactics and " ++
-      int (List.length unaligned_defs) ++ str "/" ++
-      int def_count ++ str " unaligned definitions." ++
-      tacs_msg ++ defs_msg
-    )
-
-let push_cache () =
-  if textmode_option () then () (* No caching needed for the text model at the moment *) else
-    let { sync_context_stack; _ } = get_communicator () in
-    (* We don't send the list of tactics, hence the empty list. Tactics are only sent right before
-       prediction requests are made. *)
-    let _, stack_size = sync_context_stack TacticMap.empty (Global.env ()) in
-    if debug_option () then
-      Feedback.msg_notice Pp.(str "Cache stack size: " ++ int stack_size)
-
-(* TODO: Hack: Options have the property that they are being read by Coq's stm (multiple times) on every
-   vernac command. Hence, we can use it to execute arbitrary code. We use to automatically cache. *)
-let autocache_option =
-  let cache = ref false in
-  Goptions.{ optdepr = false
-           ; optname = "Tactician Neural Autocache"
-           ; optkey = ["Tactician"; "Neural"; "Autocache"]
-           ; optread = (fun () -> (if !cache then push_cache () else ()); !cache)
-           ; optwrite = (fun v -> cache := v) }
-let () = Goptions.declare_bool_option autocache_option
+let check_neural_alignment_ref = ref (fun () -> ())
+let check_neural_alignment () = !check_neural_alignment_ref ()
+let push_cache_ref = ref (fun () -> ())
+let push_cache () = !push_cache_ref ()
 
 module NeuralLearner : TacticianOnlineLearnerType = functor (TS : TacticianStructures) -> struct
   module LH = Learner_helper.L(TS)
   open TS
+  open Graph_generator_learner.ConvertStructures(TS)
 
   let predict_text request_text_prediction env ps =
     let module Tactic = Api.Reader.Tactic in
@@ -767,10 +709,13 @@ module NeuralLearner : TacticianOnlineLearnerType = functor (TS : TacticianStruc
     preds
 
   type model =
-    { tactics : (glob_tactic_expr * int) TacticMap.t }
+    { tactics : (glob_tactic_expr * int) TacticMap.t
+    ; proofs : (((proof_state * tactic_result) list * tactic option) list * data_status * KerName.t) list }
+
+  let last_model = Summary.ref ~name:"neural-learner-lastmodel" { tactics = TacticMap.empty; proofs = [] }
 
   let empty () =
-    { tactics = TacticMap.empty }
+    { tactics = TacticMap.empty; proofs = [] }
 
   let add_tactic_info env map tac =
     let tac = Tactic_normalize.tactic_normalize @@ Tactic_normalize.tactic_strict tac in
@@ -782,22 +727,64 @@ module NeuralLearner : TacticianOnlineLearnerType = functor (TS : TacticianStruc
       TacticMap.add
         (Tactic_hash.tactic_hash env base_tactic) (base_tactic, params) map
 
-  let learn { tactics } _origin _outcomes tac =
-    match tac with
-    | None -> { tactics }
+  let learn { tactics; proofs } (kn, path, status) outcomes tac =
+    let tactics = match tac with
+    | None -> tactics
     | Some tac ->
       let tac = tactic_repr tac in
       let tactics = add_tactic_info (Global.env ()) tactics tac in
-      last_model := tactics;
-      {  tactics }
+      tactics in
+    let proofs =
+      let proof_states = List.map (fun x ->
+          x.before, x.result) outcomes in
+      match proofs with
+      | (ls, pstatus, pkn)::data when KerName.equal kn pkn ->
+        ((proof_states, tac)::ls, pstatus, pkn)::data
+      | _ -> ([proof_states, tac], status, kn)::proofs in
+    let db = { tactics; proofs } in
+    last_model := db;
+    db
 
-  let predict { tactics } =
+  let env_extra proofs =
+    let globrefs = Environ.Globals.view (Global.env ()).env_globals in
+    let section_vars = Id.Set.of_list @@
+      List.map Context.Named.Declaration.get_id @@ Environ.named_context @@ Global.env () in
+    let constants = globrefs.constants in
+    (* We are only interested in canonical constants *)
+    let constants = Cmap_env.fold (fun c _ m ->
+        let c = Constant.make1 @@ Constant.canonical c in
+        Cset.add c m) constants Cset.empty in
+
+
+    let proof_states = List.map (fun (prf, status, c) -> List.rev prf, status, c) @@ List.rev proofs in
+
+    let env_extra_const = Cset.fold (fun c m ->
+        let path = Constant.canonical c in
+        let proof = List.find_opt (fun (p, _, path2) -> KerName.equal path path2) proof_states in
+        let proof = Option.map (fun (p, _, _) -> p) proof in
+        let proof = Option.map (List.map (fun (pss, tac) ->
+            List.map (fun (before, result) -> mk_outcome before result) pss,
+            Option.map tactic_repr tac)) proof in
+        Option.fold_left (fun m proof -> Cmap.add c proof m) m proof
+      ) constants Cmap.empty in
+    let env_extra_var = Id.Set.fold (fun id m ->
+        let proof = List.find_opt (fun (_, _, path) -> Id.equal id @@ Label.to_id @@ KerName.label path) proof_states in
+        let proof = Option.map (fun (p, _, _) -> p) proof in
+        let proof = Option.map (List.map (fun (pss, tac) ->
+            List.map (fun (before, result) -> mk_outcome before result) pss,
+            Option.map tactic_repr tac)) proof in
+        Option.fold_left (fun m proof -> Id.Map.add id proof m) m proof
+      ) section_vars Id.Map.empty in
+    env_extra_var, env_extra_const
+
+  let predict { tactics; proofs } =
     let { add_global_context; sync_context_stack
         ; request_prediction; request_text_prediction; _ } = get_communicator () in
     let env = Global.env () in
     if not @@ textmode_option () then
+      let env_extra = env_extra proofs in
       let state, stack_size =
-        sync_context_stack ~keep_cache:false tactics env in
+        sync_context_stack ~keep_cache:false tactics env_extra env in
       let find_global_argument = find_global_argument state in
       fun f ->
         if f = [] then IStream.empty else
@@ -814,6 +801,74 @@ module NeuralLearner : TacticianOnlineLearnerType = functor (TS : TacticianStruc
           let preds = List.map (fun (t, c) -> { confidence = c; focus = 0; tactic = tactic_make t }) preds in
           IStream.of_list preds
   let evaluate db _ _ = 0., db
+
+
+  let check_neural_alignment () =
+    let { sync_context_stack; check_alignment; _ } = get_communicator () in
+    let module Request = Api.Builder.PredictionProtocol.Request in
+    let module Response = Api.Reader.PredictionProtocol.Response in
+    let env = Global.env () in
+    let { tactics; proofs } = !last_model in
+    let env_extra = env_extra (!last_model).proofs in
+    let state, stack_size = sync_context_stack ~keep_cache:false tactics env_extra env in
+    let request = Request.init_root () in
+    Request.check_alignment_set request;
+    let unaligned_tacs, unaligned_defs = check_alignment () in
+    let find_global_argument = find_global_argument state in
+    let unaligned_tacs = Capnp.Array.map_list ~f:(fun t -> fst @@ find_tactic tactics t) unaligned_tacs in
+    let unaligned_defs = Capnp.Array.map_list ~f:(fun node ->
+        let sid = stack_size - 1 - Api.Reader.Node.dep_index_get node in
+        let nid = Api.Reader.Node.node_index_get_int_exn node in
+        find_global_argument (sid, nid)) unaligned_defs in
+    let tacs_msg = if CList.is_empty unaligned_tacs then Pp.mt () else
+        Pp.(fnl () ++ str "Unaligned tactics: " ++ fnl () ++
+            prlist_with_sep fnl (Pptactic.pr_glob_tactic env) unaligned_tacs) in
+    let defs_msg =
+      let open Tactic_one_variable in
+      if CList.is_empty unaligned_defs then Pp.mt () else
+        Pp.(fnl () ++ str "Unaligned definitions: " ++ fnl () ++
+            prlist_with_sep fnl
+              (function
+                | TVar id -> Id.print id
+                | TRef r -> Libnames.pr_path @@ Nametab.path_of_global r
+                | TOther -> Pp.mt ())
+              unaligned_defs) in
+    let def_count = Id.Map.cardinal state.section_nodes +
+                    Cmap.cardinal state.definition_nodes.constants +
+                    Indmap.cardinal state.definition_nodes.inductives +
+                    Constrmap.cardinal state.definition_nodes.constructors +
+                    ProjMap.cardinal state.definition_nodes.projections in
+    Feedback.msg_notice Pp.(
+        str "There are " ++ int (List.length unaligned_tacs) ++ str "/" ++
+        int (TacticMap.cardinal tactics) ++ str " unaligned tactics and " ++
+        int (List.length unaligned_defs) ++ str "/" ++
+        int def_count ++ str " unaligned definitions." ++
+        tacs_msg ++ defs_msg
+      )
+
+  let push_cache () =
+    if textmode_option () then () (* No caching needed for the text model at the moment *) else
+      let { sync_context_stack; _ } = get_communicator () in
+      (* We don't send the list of tactics, hence the empty list. Tactics are only sent right before
+         prediction requests are made. *)
+      let env_extra = env_extra (!last_model).proofs in
+      let _, stack_size = sync_context_stack TacticMap.empty env_extra (Global.env ()) in
+      if debug_option () then
+        Feedback.msg_notice Pp.(str "Cache stack size: " ++ int stack_size)
+
+  let () = check_neural_alignment_ref := check_neural_alignment
+  let () = push_cache_ref := push_cache
+
+  (* TODO: Hack: Options have the property that they are being read by Coq's stm (multiple times) on every
+     vernac command. Hence, we can use it to execute arbitrary code. We use to automatically cache. *)
+  let autocache_option =
+    let cache = ref false in
+    Goptions.{ optdepr = false
+             ; optname = "Tactician Neural Autocache"
+             ; optkey = ["Tactician"; "Neural"; "Autocache"]
+             ; optread = (fun () -> (if !cache then push_cache () else ()); !cache)
+             ; optwrite = (fun v -> cache := v) }
+  let () = Goptions.declare_bool_option autocache_option
 
 end
 
