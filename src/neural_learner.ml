@@ -748,38 +748,6 @@ module NeuralLearner : TacticianOnlineLearnerType = functor (TS : TacticianStruc
     last_model := db;
     db
 
-  let _env_extra proofs =
-    let globrefs = Environ.Globals.view (Global.env ()).env_globals in
-    let section_vars = Id.Set.of_list @@
-      List.map Context.Named.Declaration.get_id @@ Environ.named_context @@ Global.env () in
-    let constants = globrefs.constants in
-    (* We are only interested in canonical constants *)
-    let constants = Cmap_env.fold (fun c _ m ->
-        let c = Constant.make1 @@ Constant.canonical c in
-        Cset.add c m) constants Cset.empty in
-
-
-    let proof_states = List.map (fun (prf, status, c) -> List.rev prf, status, c) @@ List.rev proofs in
-
-    let env_extra_const = Cset.fold (fun c m ->
-        let path = Constant.canonical c in
-        let proof = List.find_opt (fun (p, _, path2) -> KerName.equal path path2) proof_states in
-        let proof = Option.map (fun (p, _, _) -> p) proof in
-        let proof = Option.map (List.map (fun (pss, tac) ->
-            List.map (fun (before, result) -> mk_outcome before result) pss,
-            Option.map tactic_repr tac)) proof in
-        Option.fold_left (fun m proof -> Cmap.add c proof m) m proof
-      ) constants Cmap.empty in
-    let env_extra_var = Id.Set.fold (fun id m ->
-        let proof = List.find_opt (fun (_, _, path) -> Id.equal id @@ Label.to_id @@ KerName.label path) proof_states in
-        let proof = Option.map (fun (p, _, _) -> p) proof in
-        let proof = Option.map (List.map (fun (pss, tac) ->
-            List.map (fun (before, result) -> mk_outcome before result) pss,
-            Option.map tactic_repr tac)) proof in
-        Option.fold_left (fun m proof -> Id.Map.add id proof m) m proof
-      ) section_vars Id.Map.empty in
-    env_extra_var, env_extra_const
-
   let predict { tactics; proofs } =
     let { add_global_context; sync_context_stack
         ; request_prediction; request_text_prediction; _ } = get_communicator () in
