@@ -735,16 +735,15 @@ module NeuralLearner : TacticianOnlineLearnerType = functor (TS : TacticianStruc
       let tac = tactic_repr tac in
       let tactics = add_tactic_info (Global.env ()) tactics tac in
       tactics in
-    let constant = Constant.make1 kn in
-    
-    let proof_step = List.map (fun x ->
-        x.before, x.result) outcomes in
-    let proof_step = List.map (fun (before, result) -> mk_outcome before result) proof_step,
-        Option.map tactic_repr tac in
 
-    let proof = Option.default [] @@ Cmap.find_opt constant const_proofs in
-    let proof = proof_step :: proof in
-    let const_proofs = Cmap.add constant proof const_proofs in
+    let constant = Constant.make1 kn in
+    let proof_step = List.map (fun outcome -> mk_outcome outcome.before outcome.result) outcomes,
+                     Option.map tactic_repr tac in
+    (* TODO: The list of proofs should be reversed at some point downstream *)
+    let update proof = Some (Option.default [proof_step] @@ Option.map (fun prf -> proof_step :: prf) proof) in
+    (* TODO: This is not entirely correct:
+             We always attach a proof to a constant, never to a section variable. No good solution for now. *)
+    let const_proofs = Cmap.update constant update const_proofs in
     let db = { tactics; proofs = var_proofs, const_proofs } in
     last_model := db;
     db
