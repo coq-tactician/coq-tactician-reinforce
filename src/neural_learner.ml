@@ -736,6 +736,14 @@ module NeuralLearner : TacticianOnlineLearnerType = functor (TS : TacticianStruc
       let tactics = add_tactic_info (Global.env ()) tactics tac in
       tactics in
 
+    (* TODO: Drop-in shadowing replacement for mk_outcome. For now, we don't need the proof term and after
+             states. We butcher them to make the payload smaller and faster to compute. *)
+    let mk_outcome before result =
+      let f e =
+        let d = tactic_result_dependent result e in
+        mk_single_proof_state d in
+      mk_proof_state before, Constr.mkProp, Evd.empty, f, [] in
+
     let constant = Constant.make1 kn in
     let proof_step = List.map (fun outcome -> mk_outcome outcome.before outcome.result) outcomes,
                      Option.map tactic_repr tac in
