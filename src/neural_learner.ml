@@ -6,40 +6,6 @@ open Graph_extractor
 open Graph_def
 open Tacexpr
 
-let declare_bool_option ~name ~default =
-  let key = ["Tactician"; "Neural"; name] in
-  Goptions.declare_bool_option_and_ref
-    ~depr:false ~name:(String.concat " " key)
-    ~key ~value:default
-
-let declare_int_option ~name ~default =
-  let open Goptions in
-  let key = ["Tactician"; "Neural"; name] in
-  let r_opt = ref default in
-  let optwrite v = r_opt := match v with | None -> default | Some v -> v in
-  let optread () = Some !r_opt in
-  let _ = declare_int_option {
-      optdepr = false;
-      optname = String.concat " " key;
-      optkey = key;
-      optread; optwrite
-    } in
-  fun () -> !r_opt
-
-let declare_string_option ~name ~default =
-  let open Goptions in
-  let key = ["Tactician"; "Neural"; name] in
-  let r_opt = ref default in
-  let optwrite v = r_opt := v in
-  let optread () = !r_opt in
-  let _ = declare_string_option {
-      optdepr = false;
-      optname = String.concat " " key;
-      optkey = key;
-      optread; optwrite
-    } in
-  optread
-
 let textmode_option = declare_bool_option ~name:"Textmode" ~default:false
 let include_metadata_option = declare_bool_option ~name:"Metadata" ~default:false
 let debug_option = declare_bool_option ~name:"Debug" ~default:false
@@ -719,10 +685,7 @@ module NeuralLearner : TacticianOnlineLearnerType = functor (TS : TacticianStruc
     { tactics = TacticMap.empty; proofs = Id.Map.empty, Cmap.empty }
 
   let add_tactic_info env map tac =
-    let tac = Tactic_normalize.tactic_normalize @@ Tactic_normalize.tactic_strict tac in
-    let tac = Tactic_name_remove.tactic_name_remove tac in
-    let (args, tactic_exact), interm_tactic = Tactic_one_variable.tactic_one_variable tac in
-    let base_tactic = Tactic_one_variable.tactic_strip tac in
+    let { base_tactic; args; _ } = analyze_tactic tac in
     let params = List.length args in
     if params >= 256 then map else
       TacticMap.add
