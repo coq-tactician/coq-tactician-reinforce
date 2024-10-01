@@ -723,7 +723,7 @@ module NeuralLearner : TacticianOnlineLearnerType = functor (TS : TacticianStruc
             ((match cache_type path with
              | `File -> Feedback.msg_warning (Pp.str "Malformed proof state detected")
              | _ -> ()); true)
-          else false
+          else status
         | _ -> Constr.fold aux status c in
       let status = aux false (TS.term_repr @@ TS.proof_state_goal ps) in
       let status = Context.Named.fold_outside

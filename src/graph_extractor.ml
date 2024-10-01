@@ -340,7 +340,7 @@ module CICGraphMonad (G : GraphMonadType) : CICGraphMonadType
     let+ named = lookup_named_map in
     try
       Id.Map.find id named
-    with Not_found -> CErrors.anomaly Pp.(str "Variable name could not be resolved")
+    with Not_found -> CErrors.anomaly Pp.(str "Variable name " ++ Id.print id ++ str " could not be resolved")
   let lookup_def_depth =
     let+ { def_depth; _ } = ask in
     def_depth
