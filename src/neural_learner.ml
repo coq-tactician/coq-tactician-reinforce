@@ -733,6 +733,14 @@ module NeuralLearner : TacticianOnlineLearnerType = functor (TS : TacticianStruc
           (TS.proof_state_hypotheses ps) ~init:status in
       status in
 
+    (* TODO: Ridiculous tactic filtering: *)
+    let tac = match tac with
+      | None -> None
+      | Some tac ->
+        let { base_tactic; args; _ } = analyze_tactic @@ tactic_repr tac in
+        let params = List.length args in
+        if params >= 256 then None else Some tac in
+
     (* TODO: Drop-in shadowing replacement for mk_outcome. For now, we don't need the proof term and after
              states. We butcher them to make the payload smaller and faster to compute. *)
     let mk_outcome before result =
