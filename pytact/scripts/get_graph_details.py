@@ -7,13 +7,15 @@ from pytact.graph_api_capnp_cython import EdgeClassification
 from pytact.graph_api_capnp_cython import Graph_Node_Label_Which
 from collections import defaultdict
 import torch
+import os
 import torch.nn as nn
 import torch.nn.functional as F
+from torch_geometric.data import Dataset, Data
 import random
 import numpy as np
 from sklearn.metrics import classification_report
 
-def get_file_size(reader,dataset_pointer): 
+def get_file_size(reader, dataset_pointer): 
         pdl = dataset_pointer.lowlevel
         size = len(pdl.graph.nodes)
         return size
@@ -109,9 +111,65 @@ def get_graph_details(index, reader, dataset_pointer) -> Tuple[List[str], List[s
     return node_attr, edge_attr, [(node_to_index[i], node_to_index[j]) for i, j in edge_index], [order_of_execution[i] for i in node_index], node_index
 
 
+# Define a custom dataset class with an option to save and load
+class PytacPygeomDataset(Dataset):
+    def __init__(self, root, reader, files_list, transform=None, pre_transform=None):
+        super().__init__(root, reader, files_list, transform, pre_transform)
+        self.root = root
+        self.graphs = []
+        self.reader = reader
+        self.files_list = files_list
+    
+    def _process(self):
+        # Example: Generate some graphs
+        for filename in self.files_list:    
+            dataset_pointer = self.reader[pathlib.Path(filename)]
+            size = get_file_size(self.reader, dataset_pointer)
+ 
+
+            #for index in range(size):
+            for index in range(10):    
+                if not index%100: 
+                    print(index)
+                dag_info = get_graph_details(index, self.reader, dataset_pointer)
+                
+                x = dag_info[0] # node_attributes
+                edge_index = dag_info[1] 
+                edge_attr = dag_info[2]
+                execution_order = dag_info[4] # execution order for the TreeLstm from low to high - first Leaf nodes
+                print(x, edge_attr, execution_order)
+                self.graphs.append(Data(x=x, edge_index=edge_index, edge_attr=edge_attr, execution_order=execution_order))
+
+            # Save the processed data
+        self.save_to_disk()
+    
+    def save_to_disk(self):
+        os.makedirs(self.processed_dir, exist_ok=True)
+        for idx, graph in enumerate(self.graphs):
+            path = os.path.join(self.processed_dir, f'a_graph_{idx}.pt')
+            torch.save(graph, path)
+    
+    def load_from_disk(self):
+        self.graphs = []
+        for filename in os.listdir(self.processed_dir):
+            if filename.endswith('.pt'):
+                path = os.path.join(self.processed_dir, filename)
+                graph = torch.load(path)
+                self.graphs.append(graph)
+
+    def len(self):
+        return len(self.graphs)
+
+    def get(self, idx):
+        return self.graphs[idx]
+
+
+
 def main(): 
+    print("Initial test: ......")
     dataset_location_ = '../../../../v15-stdlib-coq8.11/dataset'
     file_name="coq-tactician-stdlib.8.11.dev/theories/Init/Logic.bin"
+    peano_filename = "coq-tactician-stdlib.8.11.dev/theories/Init/Peano.bin"
     dataset_path = pathlib.Path(dataset_location_)
     file_path = pathlib.Path(file_name)
     with data_reader.data_reader(dataset_path) as reader: 
@@ -120,6 +178,14 @@ def main():
         print(get_pytac_node_id(index=0, reader=reader, dataset_pointer=dataset_pointer))
         print(get_graph_nodes_depth(index=0, reader=reader, dataset_pointer=dataset_pointer))
         print(get_graph_details(index=0, reader=reader, dataset_pointer=dataset_pointer))
+        print("Initial test: Done")
+        
+        print("Dataset Creation: ......")
+        root_dir = './graph_dataset'
+        dataset = PytacPygeomDataset(root_dir, reader=reader, files_list=[peano_filename])
+        
+        dataset._process()  # Create and save the dataset
+        print("Dataset Creation: Done")
         
 if __name__ == "__main__":
     exit(main())
