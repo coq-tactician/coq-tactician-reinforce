@@ -41,6 +41,7 @@ class Settings:
     show_trivial_evar_substs: bool = False
     hide_proof_terms: bool = False
     show_edge_labels: bool = False
+    show_tokenization: bool = False
     order_edges: bool = False
     concentrate_edges: bool = False
     show_non_anonymized_tactics: bool = False
@@ -48,7 +49,6 @@ class Settings:
     max_size: int = 100
 
     def __post_init__(self):
-        self.max_size = min(10000, self.max_size) # Prevent DDoS attacks by limiting the size of the graph
         if not self.no_defaults:
             self.ignore_edges = [graph_api_capnp.EdgeClassification.schema.enumerants['constOpaqueDef']]
             label = graph_api_capnp.Graph.Node.Label
@@ -251,6 +251,64 @@ class GraphVisualizator:
         location = self.path2location(fname)
         return GraphVisualizationOutput(dot.source, location, len(location) - 1)
 
+    def print_token(self, token_1, token_2):
+        dic = {
+            "LAMBDA": "λ(. , ",
+            "PROD": "∀(. , ",
+            "APP": "(., ",
+        }
+
+        return dic[token_1] + dic[token_2] + ".))"
+        
+    def match(self, node: Node , seen, prefix, context_prefix, tokens: List[Tuple[str, str , str]] = None):
+        assert node is not None, "Empty Node, Please provide a valid node"
+        assert tokens is not None, "Please provide tokens to check for"
+        node_mapping = {
+            "LAMBDA": lambda x: x.label.is_lambda_,
+            "APP": lambda x: x.label.is_app,
+            "PROD": lambda x: x.label.is_prod,
+            "REL": lambda x: x.label.is_rel,
+        }
+        final_lis = []
+        flag = 0
+
+        for tok in tokens:
+            assert tok[0] in node_mapping.keys() , f"{tok[0]} one of the nodes is not part of vocabulary"
+            assert tok[2] in node_mapping.keys() , f"{tok[1]} one of the nodes is not part of vocabulary"
+            if node_mapping[tok[0]](node): #check if current node is lambda
+                for edge , child in node.children: #iterate through the children
+                    print("node label" , node.label.which.name , "edge label" , edge.name , "child label" , child.label.which.name)
+                    if edge.name == tok[1] and node_mapping[tok[2]](child): # if one of the child is lambda
+                        flag = 1
+                        for e ,c in child.children: # get all its children and skip the node. 
+                            final_lis.append((e , c))
+                    else: #just append the child normal
+                        final_lis.append((edge , child))
+                if flag == 1:
+                    break
+
+        if flag == 1:
+            return final_lis , [tok[0] , tok[1] , tok[2]]
+        else:
+            return list(node.children) , ""
+
+    def get_node_prefix(self , node, enum, prefix, context_prefix):
+        which = node.label.which
+        if which == enum.proofState:
+            node_prefix = context_prefix
+        elif which == enum.contextAssum:
+            node_prefix = context_prefix
+        elif which == enum.contextDef:
+            node_prefix = context_prefix
+        elif which == enum.evarSubst:
+            node_prefix = prefix + context_prefix
+        else:
+            node_prefix = prefix
+        return node_prefix
+    
+    def print_graph(self, node: Node) -> str:
+        return node.label.which.name
+     
     def visualize_term(self, dot, start: Node, depth, depth_ignore: Set[Node] = set(),
                        max_nodes=100, seen: Union[Dict[str, str], None]=None,
                        node_label_map=node_label_map,
@@ -262,22 +320,25 @@ class GraphVisualizator:
         def recurse(node: Node, depth, context_prefix):
             nonlocal seen
             nonlocal nodes_left
-
-            enum = graph_api_capnp.Graph.Node.Label
-            which = node.label.which
-            if which == enum.proofState:
-                node_prefix = context_prefix
-            elif which == enum.contextAssum:
-                node_prefix = context_prefix
-            elif which == enum.contextDef:
-                node_prefix = context_prefix
-            elif which == enum.evarSubst:
-                node_prefix = prefix + context_prefix
+            if self.settings.show_tokenization:
+                children , token = self.match(node, seen, prefix, context_prefix, [("APP" , "APP_FUN" , "APP"), ("PROD" , "PROD_TERM" , "PROD"), ("PROD" , "PROD_TYPE" , "PROD")])
             else:
-                node_prefix = prefix
-            id = node_prefix + str(node)
+                children = node.children
+                token = ""
+            
+            if node.label.is_rel:
+                children = []
+
+            res = []
+            for e,n in children:
+                res.append(n.label.which.name)
+            
+            enum = graph_api_capnp.Graph.Node.Label
+            node_prefix = self.get_node_prefix(node, enum, prefix, context_prefix)
+            id = node_prefix + str(node) 
             if id in seen:
                 return seen[id]
+            
             dot_id = f"c{self.node_counter}-{id}"
             seen[id] = dot_id
             nodes_left -= 1
@@ -286,8 +347,11 @@ class GraphVisualizator:
                 id = 'trunc' + str(self.node_counter)
                 dot.node(id, 'truncated')
                 return id
-
+            
             shape, label, tooltip = node_label_map(node)
+            if token != "":
+                label = token[0] + "-" + token[1] + "-" + token[2] #self.print_token(token[0], token[1])
+
             self.render_node(dot, node, shape, label, id=dot_id, tooltip=tooltip)
             if node.definition and not node in depth_ignore:
                 depth -= 1
@@ -298,7 +362,7 @@ class GraphVisualizator:
                               if c.label.which == graph_api_capnp.Graph.Node.Label.proofState][0]
                     context_prefix = proof_state_prefix.get(evarid, context_prefix)
 
-                for edge, child in node.children:
+                for edge, child in children:
                     if edge in self.settings.ignore_edges:
                         continue
                     if child.label.which == graph_api_capnp.Graph.Node.Label.evarSubst:
@@ -318,6 +382,8 @@ class GraphVisualizator:
             if node.label.which_raw in self.settings.unshare_nodes:
                 del seen[id]
             return dot_id
+        
+        print(self.print_graph(node=start))
         id = recurse(start, depth, before_prefix)
         return id
 

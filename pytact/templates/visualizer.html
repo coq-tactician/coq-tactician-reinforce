@@ -123,6 +123,13 @@
                     </div>
                     <div class="field">
                         <div class="ui toggle checkbox">
+                            <input type="checkbox" id="show_tokenization" name="show_tokenization"
+                                {% if settings.show_tokenization %}checked{% endif %}>
+                            <label for="show_tokenization">Show Tokenization</label>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <div class="ui toggle checkbox">
                             <input type="checkbox" id="order_edges" name="order_edges"
                                 {% if settings.order_edges %}checked{% endif %}>
                             <label for="order_edges">Order outgoing edges</label>
