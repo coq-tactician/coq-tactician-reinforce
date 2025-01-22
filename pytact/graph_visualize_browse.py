@@ -17,36 +17,34 @@ from collections import deque
 
 class TreeNode:
     def __init__(self, value=0, children=None, incoming_edge=None):
-        self.value = value
-        self.incoming_edge = incoming_edge
-        self.children = children if children is not None else []
+        self.value: str = value
+        self.children: List[Tuple[str , TreeNode]] = children if children is not None else []
 
-def graph_to_tree(root, incoming_edge=None):
+def graph_to_tree(root):
     """
     Converts a graph into a tree-like structure rooted at `root` using the TreeNode class.
     
     Returns:
         TreeNode: The root of the tree.
     """
-    visited = set()
 
-    def build_tree(edge_value , node_value):
+    def build_tree(node_value):
         if node_value.label.is_rel:
-            return  TreeNode(value=node_value.label.which.name, incoming_edge=edge_value.name)
-        
+            return  TreeNode(value=node_value.label.which.name)
+            
         if edge_value is not None:
-            node = TreeNode(value=node_value.label.which.name, incoming_edge=edge_value.name)
+            node = TreeNode(value=node_value.label.which.name)
         else:
-            node = TreeNode(value=node_value.label.which.name, incoming_edge=None)
+            node = TreeNode(value=node_value.label.which.name)
 
         for edge_value , child_value in node_value.children:
-            child_node = build_tree(edge_value , child_value,)
+            child_node = build_tree(child_value)
             if child_node:
                 node.children.append(child_node)
 
         return node
 
-    return build_tree(incoming_edge, root)
+    return build_tree(root)
 
 def get_candidates(larger_tree , root_node_value):
     """
@@ -67,53 +65,34 @@ def get_candidates(larger_tree , root_node_value):
     
     return candidates_lis
 
-def is_subtree(larger_tree , smaller_tree):
-    def are_identical(tree1 , tree2):
-        if not tree1 and not tree2:
+def is_subtree(larger_tree: Node , smaller_tree: TreeNode) -> bool:
+    def are_identical(tree1: Node , tree2: TreeNode) -> bool:
+        if tree2.value == "EVAR":
             return True
-        if not tree1 and tree2:
+        if tree1.label.which.name != tree2.value:
             return False
-        if tree1.value != tree2.value:
-            return False
-        if tree1 and not tree2.children:
+        if tree1 and tree2.children == []:
             return True
-        if (tree1.incoming_edge != tree2.incoming_edge) and (tree2.incoming_edge):
-           return False
 
         set_main = {}
-        for c1 in (tree1.children):
-            set_main[(c1.incoming_edge , c1.value)] = c1
+        for e1 , c1 in (tree1.children):
+            set_main[e1.name] = c1
         
-    
-        s = len(tree2.children)
+        token_node_children_length = len(tree2.children)
+        tree_node_children_length = len(tree1.children)
+        #assert token_node_children_length == tree_node_children_length , f"Check the graph at {tree1.value} and at token {tree2.value}"
+        
         c = 0
-        for c2 in (tree2.children):
-            if (c2.incoming_edge , c2.value) not in set_main:
+        for e2 , c2 in (tree2.children):
+            if (e2) not in set_main:
                 return False    
-            if are_identical(set_main[(c2.incoming_edge , c2.value)] , c2):
-                c = c + 1
-        
-        print(c , s)
-        if c == s:
-            return True
-        return False
-
-    
-    if not smaller_tree:
+            if not are_identical(set_main[e2] , c2):
+                return False
         return True
-
-    # If the larger tree is empty but the smaller tree is not, it's not a subtree
-    if not larger_tree:
-        return False
-
+    
     # Check if the trees are identical from this node
     if are_identical(larger_tree, smaller_tree):
         return True
-
-    # Otherwise, check recursively for each child in the larger tree
-    for child in larger_tree.children:
-        if is_subtree(child, smaller_tree):
-            return True
 
     return False
 
@@ -359,19 +338,47 @@ class GraphVisualizator:
         location = self.path2location(fname)
         return GraphVisualizationOutput(dot.source, location, len(location) - 1)
 
-    def print_token(self, token_1, token_2):
-        dic = {
-            "LAMBDA": "λ(. , ",
-            "PROD": "∀(. , ",
-            "APP": "(., ",
-        }
-
-        return dic[token_1] + dic[token_2] + ".))"
 
     def add_paranthesis(self, st):
         return "( " + st + ")"
     
-    def print_node(self, node: Node , left_child: str ="" , right_child : str = ""):
+    def print_tree(self, node: TreeNode, inside_left_application: bool = False , for_all: bool = False) -> str:
+        cur_node_label = node.value
+        if cur_node_label == "REL":
+            return "↑"
+        elif cur_node_label == "EVAR":
+            return "."
+        elif cur_node_label == "SORT_TYPE":
+            return "Type"
+        elif cur_node_label == "SORT_PROP":
+            return "Prop"
+        elif cur_node_label == "CASE_BRANCH":
+            return "branch"
+        elif cur_node_label == "APP":
+            application_string = f"{self.print_tree(node.children[0][1] , inside_left_application = True)} {self.print_tree(node.children[1][1])}"
+            if not inside_left_application:
+                return self.add_paranthesis(application_string)
+            return application_string
+        elif cur_node_label == "PROD":
+            prod_string = f"∀  {self.print_tree(node.children[0][1])} {self.print_tree(node.children[1][1] , for_all=True)}"
+            if for_all:
+                return prod_string
+            return self.add_paranthesis(f"{prod_string}")
+        elif cur_node_label == "LAMBDA":
+            return self.add_paranthesis(f"λ {self.print_tree(node.children[0][1])}, {self.print_tree(node.children[1][1])}")
+        elif cur_node_label == "DEFINITION":
+            return cur_node_label
+        else:
+            child_label_list = f"{cur_node_label}("
+        
+        for edge , child in node.children:
+            child_printed = self.print_tree(child)
+            child_label_list += child_label_list + ","
+            
+        child_label_list += ")"
+        return child_label_list
+
+    def print_token(self, node: Node , left_child: str ="" , right_child : str = ""):
         cur_node_label = node.label.which.name
         if node.label.is_rel:
             return "↑"
@@ -409,38 +416,58 @@ class GraphVisualizator:
             return node.definition.name.split(".")[-1] + left_child + " " + right_child #remove the left and right child here
         else:
             return cur_node_label
-         
-    def match(self, node: Node , seen, prefix, context_prefix, tokens: List[Tuple[str, str , str]] = None):
-        assert node is not None, "Empty Node, Please provide a valid node"
-        assert tokens is not None, "Please provide tokens to check for"
-        node_mapping = {
-            "LAMBDA": lambda x: x.label.is_lambda_,
-            "APP": lambda x: x.label.is_app,
-            "PROD": lambda x: x.label.is_prod,
-            "REL": lambda x: x.label.is_rel,
-        }
-        final_lis = []
-        flag = 0
+    
+    def merge_token(self, node: Node , token: TreeNode) -> List[Tuple[str , Node]]:
+        """
+        This function takes the matched root node and the token and merges each node part of the token into a single node 
+        with children being a union all the individual node's children.
+        
+        A list called children is returned which contains all the children of the merged token. This list is then used during 
+        rendering for visualizing the graph with the merged token. 
+        """
+        q = deque([token]) # queue for tokem
+        node_q = deque([node]) # queue for the graph
+        children = []
+        while q:
+            l = len(q)
+            for _ in range(l):
+                if len(node_q) == 0:
+                    return children
+                cur_node = q.popleft()
+                cur_node_q = node_q.popleft()
+                if cur_node_q.label.is_rel:
+                    continue  
+                node_set = {}
+                for node_edge , node_child in cur_node_q.children:
+                    node_set[(node_edge.name , node_child.label.which.name)] = (node_edge , node_child)
+                for e , c in cur_node.children:
+                    if (e , c.value) in node_set:
+                        node_q.append(node_set[(e , c.value)][1])
+                        del node_set[(e , c.value)]
+                    q.append(c)
+                
+                for i , j in node_set.items():
+                    children.append(j)
+                                
+        return children
 
-        for idx , tok in enumerate(tokens):
-            assert tok[0] in node_mapping.keys() , f"{tok[0]} one of the nodes is not part of vocabulary"
-            assert tok[2] in node_mapping.keys() , f"{tok[1]} one of the nodes is not part of vocabulary"
-            if node_mapping[tok[0]](node): #check if current node is lambda
-                for edge , child in node.children: #iterate through the children
-                    print("node label" , node.label.which.name , "edge label" , edge.name , "child label" , child.label.which.name)
-                    if edge.name == tok[1] and node_mapping[tok[2]](child): # if one of the child is lambda
-                        flag = 1
-                        for e ,c in child.children: # get all its children and skip the node. 
-                            final_lis.append((e , c))
-                    else: #just append the child normal
-                        final_lis.append((edge , child))
-                if flag == 1:
-                    break
-
-        if flag == 1:
-            return final_lis , tokens[idx]
-        else:
-            return list(node.children) , ""
+    
+    def match(self, node: Node , sample_token_list: List[TreeNode] = None):
+        
+        found = False
+        new_token = ''
+        children = []
+        for i in sample_token_list:
+            if node.label.which.name == i.value:
+                found = is_subtree(node , i)
+            if found:
+                children = self.merge_token(node , i)
+                new_token = self.print_tree(i)
+                break
+            else:
+                children = node.children
+        
+        return children  , new_token
 
     def get_node_prefix(self , node, enum, prefix, context_prefix):
         which = node.label.which
@@ -463,26 +490,38 @@ class GraphVisualizator:
                        prefix='', before_prefix='', proof_state_prefix: Dict[int, str] = {}
                        ) -> str:
         
-        # target_graph_representation = self.get_graph_representation(start, prefix = prefix , context_prefix=before_prefix)
-        # print("graph nodes are" , target_graph_representation.nodes())
-        # print("number of nodes" , target_graph_representation.number_of_nodes())
-        # for node, attrs in target_graph_representation.nodes(data=True):
-        #     print(f"Node {node}: {attrs}")
         nodes_left = max_nodes
         seen = {}
+        token1 = TreeNode(value='PROD' , 
+                          children=[
+                                    ("PROD_TYPE" , TreeNode(value='SORT_TYPE')) , 
+                                    ("PROD_TERM" , TreeNode(value='PROD' , children=[("PROD_TERM" , TreeNode(value='EVAR')),
+                                                                                     ("PROD_TYPE" , TreeNode(value="REL"))
+                                                                                                             ]
+                                                                                                             ))])
+                                                                                                              
+        token2 = TreeNode(value='APP' , children=[("APP_FUN" , TreeNode(value='APP', children=[
+            ("APP_ARG" , TreeNode(value="REL")),
+            ("APP_FUN" , TreeNode(value="REL"))
+        ])), 
+                                                  ("APP_ARG" , TreeNode(value="REL"))
+                                                  
+                                                  ])
+        sample_tokens_list = [token1 , token2]
+        
+        
         def recurse(node: Node, depth, context_prefix):
             nonlocal seen
             nonlocal nodes_left
             if self.settings.show_tokenization:
-                children , token = self.match(node, seen, prefix, context_prefix, [("APP" , "APP_FUN" , "APP"), ("PROD" , "PROD_TERM" , "PROD"), ("PROD" , "PROD_TYPE" , "PROD")])
+                children , new_token = self.match(node,sample_tokens_list)
             else:
                 children = node.children
-                token = ""
-            
+                new_token = ""
+                
             if node.label.is_rel:
                 children = []
-
-            
+    
             enum = graph_api_capnp.Graph.Node.Label
             node_prefix = self.get_node_prefix(node, enum, prefix, context_prefix)
             id = node_prefix + str(node) 
@@ -498,9 +537,6 @@ class GraphVisualizator:
                 return id , ""
             
             shape, label, tooltip = node_label_map(node)
-            #if token != "":
-            #    label = token[0] + "-" + token[1] + "-" + token[2] #self.print_token(token[0], token[1])
-
             self.render_node(dot, node, shape, label, id=dot_id, tooltip=tooltip)
             if node.definition and not node in depth_ignore:
                 depth -= 1
@@ -513,9 +549,10 @@ class GraphVisualizator:
                               if c.label.which == graph_api_capnp.Graph.Node.Label.proofState][0]
                     context_prefix = proof_state_prefix.get(evarid, context_prefix)
 
-                for child_idx , cur_child in enumerate(children):
-                    edge = cur_child[0]
-                    child = cur_child[1]
+                #print("children" , children[0][1].label.which.name)
+                for c in children:
+                    edge = c[0]
+                    child = c[1]
                     if edge in self.settings.ignore_edges:
                         continue
                     if child.label.which == graph_api_capnp.Graph.Node.Label.evarSubst:
@@ -535,23 +572,23 @@ class GraphVisualizator:
                     dot.edge(dot_id, cid, label=edge_label, tooltip=edge_name, labeltooltip=edge_name,
                                 arrowtail=self.edge_arrow_map[edge], dir="both")
                     
-            if len(cur_child_label_lis) >= 2:
-                updated_node_label = self.print_node(node, left_child = cur_child_label_lis[0] , right_child = cur_child_label_lis[1])
-            elif len(cur_child_label_lis) == 1:
-                updated_node_label = self.print_node(node, left_child = cur_child_label_lis[0])
-            else:
-                updated_node_label = self.print_node(node)
+            # if len(cur_child_label_lis) >= 2:
+            #     updated_node_label = self.print_node(node, left_child = cur_child_label_lis[0] , right_child = cur_child_label_lis[1])
+            # elif len(cur_child_label_lis) == 1:
+            #     updated_node_label = self.print_node(node, left_child = cur_child_label_lis[0])
+            # else:
+            #     updated_node_label = self.print_node(node)
             shape="rectangle"
 
-            if token!="":
-                label = updated_node_label
+            if new_token!="":
+                label = new_token
+
             self.render_node(dot , node , shape , label , id=dot_id , tooltip=tooltip)
-            # "\n new:" +  updated_node_label
             
-            seen[id] = (dot_id , updated_node_label)
+            seen[id] = (dot_id , new_token)
             if node.label.which_raw in self.settings.unshare_nodes:
                 del seen[id]
-            return dot_id , updated_node_label
+            return dot_id , new_token
         
         id , final_label = recurse(start, depth, before_prefix)
         
