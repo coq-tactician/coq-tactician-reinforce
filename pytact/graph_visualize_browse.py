@@ -80,7 +80,7 @@ def is_subtree(larger_tree: Node , smaller_tree: TreeNode) -> bool:
         
         token_node_children_length = len(tree2.children)
         tree_node_children_length = len(tree1.children)
-        #assert token_node_children_length == tree_node_children_length , f"Check the graph at {tree1.value} and at token {tree2.value}"
+        #assert token_node_children_length == tree_node_children_length , f"Check the graph at {tree1.label.which.name} and at token {tree2.value}"
         
         c = 0
         for e2 , c2 in (tree2.children):
@@ -354,6 +354,18 @@ class GraphVisualizator:
             return "Prop"
         elif cur_node_label == "CASE_BRANCH":
             return "branch"
+        elif cur_node_label == "SORT_SET":
+            return "Set"
+        elif cur_node_label == "SORT_S_PROP":
+            return "SProp"
+        elif cur_node_label == "LET_IN":
+            return "let"
+        elif cur_node_label == "FLOAT":
+            return str(node.label.float.value)
+        elif cur_node_label == "PRIMITIVE":
+            return "PRIMITIVE"
+        elif cur_node_label == "INT":
+            return str(node.label.int.value)
         elif cur_node_label == "APP":
             application_string = f"{self.print_tree(node.children[0][1] , inside_left_application = True)} {self.print_tree(node.children[1][1])}"
             if not inside_left_application:
@@ -371,9 +383,12 @@ class GraphVisualizator:
         else:
             child_label_list = f"{cur_node_label}("
         
+        lis = []
         for edge , child in node.children:
             child_printed = self.print_tree(child)
-            child_label_list += child_label_list + ","
+            lis.append(child_printed)
+        
+        child_label_list += ",".join(lis)
             
         child_label_list += ")"
         return child_label_list
@@ -452,17 +467,21 @@ class GraphVisualizator:
         return children
 
     
-    def match(self, node: Node , sample_token_list: List[TreeNode] = None):
-        
+    def match(self, node: Node , sample_token_list: List[TreeNode] = None) -> Tuple[List[Tuple[str , Node]] , str]:
+        """
+        This function takes the current node and a list of tokens and  checks if the token is present starting from the current node. 
+        If the token is present , 'print_tree' is called to create a merged representation of the token which is set as the 
+        label for the merged token node. 
+        """
         found = False
         new_token = ''
         children = []
-        for i in sample_token_list:
-            if node.label.which.name == i.value:
-                found = is_subtree(node , i)
+        for token in sample_token_list:
+            if node.label.which.name == token.value:
+                found = is_subtree(node , token)
             if found:
-                children = self.merge_token(node , i)
-                new_token = self.print_tree(i)
+                children = self.merge_token(node , token)
+                new_token = self.print_tree(token)
                 break
             else:
                 children = node.children
@@ -507,8 +526,28 @@ class GraphVisualizator:
                                                   ("APP_ARG" , TreeNode(value="REL"))
                                                   
                                                   ])
-        sample_tokens_list = [token1 , token2]
-        
+
+        token3 = TreeNode(value='PROD' , children=[("PROD_TERM" , TreeNode(value='SORT_S_PROP')), 
+                                                  ("PROD_TYPE" , TreeNode(value="REL")) 
+                                                  ])
+
+        token4 = TreeNode(value='APP' , children=[("APP_ARG" , TreeNode(value='REL')), 
+                                                  ("APP_FUN" , TreeNode(value="REL")) 
+                                                  ])
+
+        token5 = TreeNode(value='CASE', children=[("CASE_TERM" , TreeNode(value='REL'))])
+        token6 = TreeNode(value="LAMBDA" , children=[
+            ("LAMBDA_TYPE" , TreeNode(value="REL")),
+            ("LAMBDA_TERM" , TreeNode(value="LAMBDA" , children=[
+                ("LAMBDA_TYPE" , TreeNode(value="APP", children=[("APP_ARG" , TreeNode(value='REL')) , ("APP_FUN" , TreeNode(value='EVAR'))])),
+                ("LAMBDA_TERM" , TreeNode(value="CASE", children=[("CASE_TERM" , TreeNode(value='REL'))]))
+            ])),
+        ])
+
+        token7 = TreeNode(value="LET_IN" , children=[
+            ("LET_IN_TYPE" , TreeNode(value='DEFINITION')), ("LET_IN_DEF" , TreeNode(value="APP" , children=[("APP_FUN" , TreeNode(value="REL")) , ("APP_ARG" , TreeNode(value="REL"))]))])
+
+        sample_tokens_list = [token1 , token2 , token3 , token4 , token5 , token6 , token7] #tokens from the tokenizer will come here. 
         
         def recurse(node: Node, depth, context_prefix):
             nonlocal seen
