@@ -363,7 +363,7 @@ class GraphVisualizator:
         elif cur_node_label == "FLOAT":
             return str(node.label.float.value)
         elif cur_node_label == "PRIMITIVE":
-            return "PRIMITIVE"
+            return str(node.label.primitive.value)
         elif cur_node_label == "INT":
             return str(node.label.int.value)
         elif cur_node_label == "APP":
@@ -611,12 +611,6 @@ class GraphVisualizator:
                     dot.edge(dot_id, cid, label=edge_label, tooltip=edge_name, labeltooltip=edge_name,
                                 arrowtail=self.edge_arrow_map[edge], dir="both")
                     
-            # if len(cur_child_label_lis) >= 2:
-            #     updated_node_label = self.print_node(node, left_child = cur_child_label_lis[0] , right_child = cur_child_label_lis[1])
-            # elif len(cur_child_label_lis) == 1:
-            #     updated_node_label = self.print_node(node, left_child = cur_child_label_lis[0])
-            # else:
-            #     updated_node_label = self.print_node(node)
             shape="rectangle"
 
             if new_token!="":
