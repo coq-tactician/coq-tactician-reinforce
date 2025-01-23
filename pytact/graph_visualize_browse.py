@@ -18,26 +18,28 @@ from collections import deque
 class TreeNode:
     def __init__(self, value=0, children=None, incoming_edge=None):
         self.value: str = value
-        self.children: List[Tuple[str , TreeNode]] = children if children is not None else []
+        self.children: List[Tuple[str, TreeNode]
+                            ] = children if children is not None else []
+
 
 def graph_to_tree(root):
     """
     Converts a graph into a tree-like structure rooted at `root` using the TreeNode class.
-    
+
     Returns:
         TreeNode: The root of the tree.
     """
 
     def build_tree(node_value):
         if node_value.label.is_rel:
-            return  TreeNode(value=node_value.label.which.name)
-            
+            return TreeNode(value=node_value.label.which.name)
+
         if edge_value is not None:
             node = TreeNode(value=node_value.label.which.name)
         else:
             node = TreeNode(value=node_value.label.which.name)
 
-        for edge_value , child_value in node_value.children:
+        for edge_value, child_value in node_value.children:
             child_node = build_tree(child_value)
             if child_node:
                 node.children.append(child_node)
@@ -46,7 +48,8 @@ def graph_to_tree(root):
 
     return build_tree(root)
 
-def get_candidates(larger_tree , root_node_value):
+
+def get_candidates(larger_tree, root_node_value):
     """
     Takes a tree and a subtree root node's value and searches for all the candidates in the tree and 
     returns the value
@@ -59,67 +62,68 @@ def get_candidates(larger_tree , root_node_value):
             cur_node = q.pop()
             if cur_node.value == root_node_value:
                 candidates_lis.append(cur_node)
-            
+
             for c in cur_node.children:
                 q.append(c)
-    
+
     return candidates_lis
 
-def is_subtree(larger_tree: Node , smaller_tree: TreeNode) -> bool:
-    def are_identical(tree1: Node , tree2: TreeNode) -> bool:
+
+def is_subtree(larger_tree: Node, smaller_tree: TreeNode) -> bool:
+    def are_identical(tree1: Node, tree2: TreeNode) -> bool:
         if tree2.value == "EVAR":
             return True
         if tree1.label.which.name != tree2.value:
             return False
-        if tree1 and tree2.children == []:
-            return True
 
         set_main = {}
-        for e1 , c1 in (tree1.children):
+        for e1, c1 in (tree1.children):
             set_main[e1.name] = c1
-        
-        token_node_children_length = len(tree2.children)
-        tree_node_children_length = len(tree1.children)
-        #assert token_node_children_length == tree_node_children_length , f"Check the graph at {tree1.label.which.name} and at token {tree2.value}"
-        
-        c = 0
-        for e2 , c2 in (tree2.children):
+
+        for e2, c2 in (tree2.children):
             if (e2) not in set_main:
-                return False    
-            if not are_identical(set_main[e2] , c2):
+                return False
+            if not are_identical(set_main[e2], c2):
                 return False
         return True
-    
+
     # Check if the trees are identical from this node
     if are_identical(larger_tree, smaller_tree):
         return True
 
     return False
 
+
 class UrlMaker(ABC):
 
     @abstractmethod
     def definition(self, fname: Path, defid: int) -> str:
         pass
+
     @abstractmethod
     def proof(self, fname: Path, defid: int) -> str:
         pass
+
     @abstractmethod
     def outcome(self, fname: Path, defid: int, stepi: int, outcomei: int) -> str:
         pass
+
     @abstractmethod
     def global_context(self, fname: Path) -> str:
         pass
+
     @abstractmethod
     def folder(self, path: Path) -> str:
         pass
+
     @abstractmethod
     def root_folder(self) -> str:
         pass
 
+
 @dataclass
 class Settings:
-    no_defaults: bool = False # Should we use default settings?
+    no_defaults: bool = False  # Should we use default settings?
     ignore_edges: List[int] = field(default_factory=lambda: [])
     unshare_nodes: List[int] = field(default_factory=lambda: [])
     show_trivial_evar_substs: bool = False
@@ -134,10 +138,12 @@ class Settings:
 
     def __post_init__(self):
         if not self.no_defaults:
-            self.ignore_edges = [graph_api_capnp.EdgeClassification.schema.enumerants['constOpaqueDef']]
+            self.ignore_edges = [
+                graph_api_capnp.EdgeClassification.schema.enumerants['constOpaqueDef']]
             label = graph_api_capnp.Graph.Node.Label
             self.unshare_nodes = [label.definition.value, label.sortSProp.value,
                                   label.sortProp.value, label.sortSet.value, label.sortType.value]
+
 
 @dataclass
 class GraphVisualizationData:
@@ -148,15 +154,19 @@ class GraphVisualizationData:
     def __post_init__(self):
         self.trans_deps = transitive_closure({d.filename: list(d.dependencies)
                                               for d in self.data.values()})
-        self.graphid2path = [d.filename for d in sorted(self.data.values(), key=lambda d: d.graph)]
+        self.graphid2path = [d.filename for d in sorted(
+            self.data.values(), key=lambda d: d.graph)]
+
 
 @dataclass
 class GraphVisualizationOutput:
     svg: str
-    location: List[Tuple[str, str]] # tuple[Name, URL]
+    location: List[Tuple[str, str]]  # tuple[Name, URL]
     active_location: int
     text: List[str] = field(default_factory=lambda: [])
-    popups: List[Tuple[str, str]] = field(default_factory=lambda: []) # DOM id, text
+    popups: List[Tuple[str, str]] = field(
+        default_factory=lambda: [])  # DOM id, text
+
 
 def node_label_map(node: Node) -> Tuple[str, str, str]:
     enum = apic.Graph_Node_Label_Which
@@ -169,50 +179,53 @@ def node_label_map(node: Node) -> Tuple[str, str, str]:
         )
     which = label.which
     if which == enum.SORT_PROP:
-        return 'ellipse', 'Prop', 'SortProp'
+        return 'rectangle', 'Prop', 'SortProp'
     elif which == enum.SORT_S_PROP:
-        return 'ellipse', 'SProp', 'SortSProp'
+        return 'rectangle', 'SProp', 'SortSProp'
     elif which == enum.SORT_SET:
-        return 'ellipse', 'Set', 'SortSet'
+        return 'rectangle', 'Set', 'SortSet'
     elif which == enum.SORT_TYPE:
-        return 'ellipse', 'Type', 'SortType'
+        return 'rectangle', 'Type', 'SortType'
     elif which == enum.REL:
-        return 'circle', '↑', 'rel'
+        return 'rectangle', '↑', 'rel'
     elif which == enum.PROD:
-        return 'circle', '∀', 'prod'
+        return 'rectangle', '∀', 'prod'
     elif which == enum.LAMBDA:
-        return 'circle', 'λ', 'lambda'
+        return 'rectangle', 'λ', 'lambda'
     elif which == enum.LET_IN:
-        return 'ellipse', 'let', 'LetIn'
+        return 'rectangle', 'let', 'LetIn'
     elif which == enum.APP:
-        return 'circle', '@', 'app'
+        return 'rectangle', '@', 'app'
     elif which == enum.CASE_BRANCH:
-        return 'ellipse', 'branch', 'CaseBranch'
+        return 'rectangle', 'branch', 'CaseBranch'
     else:
         name = inflection.camelize(label.which.name.lower())
-        return 'ellipse', name, name
-    #add evar , evarSubst , cast , caseBranch , fix , 
-    # fixFun , coFix , coFixFun
-    # int , float , primitive
+        return 'rectangle', name, name
+
 
 def truncate_string(data, maximum):
     return data[:(maximum-2)] + '..' if len(data) > maximum else data
+
 
 def make_label(context, name):
     name_split = name.split('.')
     common = os.path.commonprefix([name_split, context.split('.')])
     return '.'.join(name_split[len(common):])
 
+
 def graphviz_escape(s):
     return s.replace('\\', '\\\\')
 
+
 def make_tooltip(d):
     return f"{inflection.camelize(d.node.label.definition.which.name.lower())} {d.name}"
+
 
 def render_proof_state_text(ps: ProofState):
     return ('<br>'.join(ps.context_text) +
             '<br>----------------------<br>' + ps.conclusion_text +
             '<br><br>Raw: ' + ps.text)
+
 
 class GraphVisualizator:
     def __init__(self, data: GraphVisualizationData, url_maker: UrlMaker, settings: Settings = Settings()):
@@ -223,8 +236,7 @@ class GraphVisualizator:
         self.settings = settings
         self.node_counter = 0
 
-
-        arrow_heads = [ "dot", "inv", "odot", "invdot", "invodot" ]
+        arrow_heads = ["dot", "inv", "odot", "invdot", "invodot"]
         edge_arrow_map = {}
         for group in graph_api_capnp.groupedEdges:
             for i, sort in enumerate(group.conflatable):
@@ -245,13 +257,14 @@ class GraphVisualizator:
     def dot_apply_style(self, dot):
         dot.attr('node', fontsize='11', fontname="Helvetica", margin='0', height='0.3',
                  style="rounded, filled", penwidth="0")
-        dot.attr('edge', fontsize='11', fontname="Helvetica", arrowsize='0.5', penwidth="0.6")
-        dot.attr('graph', fontsize='11', fontname="Helvetica", penwidth="0.6", ranksep='0.3')
+        dot.attr('edge', fontsize='11', fontname="Helvetica",
+                 arrowsize='0.5', penwidth="0.6")
+        dot.attr('graph', fontsize='11', fontname="Helvetica",
+                 penwidth="0.6", ranksep='0.3')
         if self.settings.order_edges:
             dot.attr('graph', ordering='out')
         if self.settings.concentrate_edges:
             dot.attr('graph', concentrate='true')
-
 
     def render_node(self, dot, node: Node, shape: str, label: str, id: Union[str, None] = None,
                     tooltip: Union[str, None] = None):
@@ -261,14 +274,15 @@ class GraphVisualizator:
             tooltip = label
         url = None
         if node.definition:
-            url = self.url_maker.definition(self.graphid2path[node.graph], node.nodeid)
-        dot.node(id, label, URL = url, shape = shape, tooltip = tooltip)
+            url = self.url_maker.definition(
+                self.graphid2path[node.graph], node.nodeid)
+        dot.node(id, label, URL=url, shape=shape, tooltip=tooltip)
         return id
 
     def render_file_node(self, dot, f: Path):
         label = f"File: {f.with_suffix('')}"
         node_id = f"file-{f}"
-        dot.node(node_id, label, URL = self.url_maker.global_context(f), shape='box')
+        dot.node(node_id, label, URL=self.url_maker.global_context(f), shape='box')
         return node_id
 
     def global_context(self, fname: Path):
@@ -286,24 +300,29 @@ class GraphVisualizator:
                 label = "Representative: " + label
             tooltip = make_tooltip(d)
             if isinstance(d.status, Original):
-                id = self.render_node(dot2, d.node, 'box', label, tooltip=tooltip)
+                id = self.render_node(
+                    dot2, d.node, 'box', label, tooltip=tooltip)
             elif isinstance(d.status, Discharged):
-                id = self.render_node(dot2, d.node, 'box', label, tooltip=tooltip)
+                id = self.render_node(
+                    dot2, d.node, 'box', label, tooltip=tooltip)
                 target = d.status.original
                 dot.edge(id, repr(target.node),
                          arrowtail="inv", dir="both", constraint="false", style="dashed")
             elif isinstance(d.status, Substituted):
                 target = d.status.original
                 if d.node.graph == target.node.graph:
-                    id = self.render_node(dot2, d.node, 'box', label, tooltip=tooltip)
+                    id = self.render_node(
+                        dot2, d.node, 'box', label, tooltip=tooltip)
                     dot.edge(id, str(target.node),
                              arrowtail="odot", dir="both", constraint="false", style="dashed")
                 else:
                     with dot2.subgraph() as dot3:
                         dot3.attr(rank='same')
-                        id = self.render_node(dot3, d.node, 'box', label, tooltip=tooltip)
+                        id = self.render_node(
+                            dot3, d.node, 'box', label, tooltip=tooltip)
                         id2 = self.render_node(dot3, target.node, 'box',
-                                               make_label(module_name, target.name),
+                                               make_label(
+                                                   module_name, target.name),
                                                tooltip=make_tooltip(target))
                         dot.edge(id, id2,
                                  arrowtail="odot", dir="both", constraint="false", style="dashed")
@@ -322,7 +341,8 @@ class GraphVisualizator:
                     for d in cluster:
                         render_def(dot2, d)
                         if last:
-                            dot2.edge(str(last.node), str(d.node), style="invis")
+                            dot2.edge(str(last.node), str(
+                                d.node), style="invis")
                         last = d
 
             if prev := cluster[-1].previous:
@@ -330,19 +350,20 @@ class GraphVisualizator:
                 lhead = None
                 if len(list(prev.cluster)) > 1:
                     lhead = "cluster_"+target
-                dot.edge(str(cluster[-1].node), target, lhead = lhead, ltail = ltail)
+                dot.edge(str(cluster[-1].node), target,
+                         lhead=lhead, ltail=ltail)
             for fi in cluster[-1].external_previous:
-                fid = self.render_file_node(dot, self.graphid2path[fi.node.graph])
-                dot.edge(str(cluster[-1].node), fid, ltail = ltail)
+                fid = self.render_file_node(
+                    dot, self.graphid2path[fi.node.graph])
+                dot.edge(str(cluster[-1].node), fid, ltail=ltail)
 
         location = self.path2location(fname)
         return GraphVisualizationOutput(dot.source, location, len(location) - 1)
 
-
     def add_paranthesis(self, st):
         return "( " + st + ")"
-    
-    def print_tree(self, node: TreeNode, inside_left_application: bool = False , for_all: bool = False) -> str:
+
+    def print_tree(self, node: TreeNode, enable_side_printing: bool = False) -> str:
         cur_node_label = node.value
         if cur_node_label == "REL":
             return "↑"
@@ -367,13 +388,13 @@ class GraphVisualizator:
         elif cur_node_label == "INT":
             return str(node.label.int.value)
         elif cur_node_label == "APP":
-            application_string = f"{self.print_tree(node.children[0][1] , inside_left_application = True)} {self.print_tree(node.children[1][1])}"
-            if not inside_left_application:
+            application_string = f"{self.print_tree(node.children[0][1] , enable_side_printing=True)} {self.print_tree(node.children[1][1])}"
+            if not enable_side_printing:
                 return self.add_paranthesis(application_string)
             return application_string
         elif cur_node_label == "PROD":
-            prod_string = f"∀  {self.print_tree(node.children[0][1])} {self.print_tree(node.children[1][1] , for_all=True)}"
-            if for_all:
+            prod_string = f"∀  {self.print_tree(node.children[0][1])} {self.print_tree(node.children[1][1] , enable_side_printing=True)}"
+            if enable_side_printing:
                 return prod_string
             return self.add_paranthesis(f"{prod_string}")
         elif cur_node_label == "LAMBDA":
@@ -382,18 +403,18 @@ class GraphVisualizator:
             return cur_node_label
         else:
             child_label_list = f"{cur_node_label}("
-        
+
         lis = []
-        for edge , child in node.children:
+        for edge, child in node.children:
             child_printed = self.print_tree(child)
             lis.append(child_printed)
-        
+
         child_label_list += ",".join(lis)
-            
+
         child_label_list += ")"
         return child_label_list
 
-    def print_token(self, node: Node , left_child: str ="" , right_child : str = ""):
+    def print_token(self, node: Node, left_child: str = "", right_child: str = ""):
         cur_node_label = node.label.which.name
         if node.label.is_rel:
             return "↑"
@@ -421,27 +442,28 @@ class GraphVisualizator:
             if left_child:
                 prod_string += left_child
             if right_child:
-                prod_string += ", "  + right_child if left_child else right_child
+                prod_string += ", " + right_child if left_child else right_child
             return self.add_paranthesis(f"∀ {prod_string}")
-        
+
         elif node.label.is_lambda_:
-            return self.add_paranthesis(f"λ {left_child}, {right_child}") if right_child else  self.add_paranthesis(f"λ {left_child}")
-        
+            return self.add_paranthesis(f"λ {left_child}, {right_child}") if right_child else self.add_paranthesis(f"λ {left_child}")
+
         elif node.label.is_definition:
-            return node.definition.name.split(".")[-1] + left_child + " " + right_child #remove the left and right child here
+            # remove the left and right child here
+            return node.definition.name.split(".")[-1] + left_child + " " + right_child
         else:
             return cur_node_label
-    
-    def merge_token(self, node: Node , token: TreeNode) -> List[Tuple[str , Node]]:
+
+    def merge_token(self, node: Node, token: TreeNode) -> List[Tuple[str, Node]]:
         """
         This function takes the matched root node and the token and merges each node part of the token into a single node 
         with children being a union all the individual node's children.
-        
+
         A list called children is returned which contains all the children of the merged token. This list is then used during 
         rendering for visualizing the graph with the merged token. 
         """
-        q = deque([token]) # queue for tokem
-        node_q = deque([node]) # queue for the graph
+        q = deque([token])  # queue for tokem
+        node_q = deque([node])  # queue for the graph
         children = []
         while q:
             l = len(q)
@@ -451,23 +473,23 @@ class GraphVisualizator:
                 cur_node = q.popleft()
                 cur_node_q = node_q.popleft()
                 if cur_node_q.label.is_rel:
-                    continue  
+                    continue
                 node_set = {}
-                for node_edge , node_child in cur_node_q.children:
-                    node_set[(node_edge.name , node_child.label.which.name)] = (node_edge , node_child)
-                for e , c in cur_node.children:
-                    if (e , c.value) in node_set:
-                        node_q.append(node_set[(e , c.value)][1])
-                        del node_set[(e , c.value)]
+                for node_edge, node_child in cur_node_q.children:
+                    node_set[(node_edge.name, node_child.label.which.name)] = (
+                        node_edge, node_child)
+                for e, c in cur_node.children:
+                    if (e, c.value) in node_set:
+                        node_q.append(node_set[(e, c.value)][1])
+                        del node_set[(e, c.value)]
                     q.append(c)
-                
-                for i , j in node_set.items():
+
+                for i, j in node_set.items():
                     children.append(j)
-                                
+
         return children
 
-    
-    def match(self, node: Node , sample_token_list: List[TreeNode] = None) -> Tuple[List[Tuple[str , Node]] , str]:
+    def match(self, node: Node, sample_token_list: List[TreeNode] = None) -> Tuple[List[Tuple[str, Node]], str]:
         """
         This function takes the current node and a list of tokens and  checks if the token is present starting from the current node. 
         If the token is present , 'print_tree' is called to create a merged representation of the token which is set as the 
@@ -478,17 +500,17 @@ class GraphVisualizator:
         children = []
         for token in sample_token_list:
             if node.label.which.name == token.value:
-                found = is_subtree(node , token)
+                found = is_subtree(node, token)
             if found:
-                children = self.merge_token(node , token)
+                children = self.merge_token(node, token)
                 new_token = self.print_tree(token)
                 break
             else:
                 children = node.children
-        
-        return children  , new_token
 
-    def get_node_prefix(self , node, enum, prefix, context_prefix):
+        return children, new_token
+
+    def get_node_prefix(self, node, enum, prefix, context_prefix):
         which = node.label.which
         if which == enum.proofState:
             node_prefix = context_prefix
@@ -501,94 +523,64 @@ class GraphVisualizator:
         else:
             node_prefix = prefix
         return node_prefix
-    
-        
+
     def visualize_term(self, dot, start: Node, depth, depth_ignore: Set[Node] = set(),
-                       max_nodes=100, seen: Union[Dict[str, str], None]=None,
+                       max_nodes=100, seen: Union[Dict[str, str], None] = None,
                        node_label_map=node_label_map,
                        prefix='', before_prefix='', proof_state_prefix: Dict[int, str] = {}
                        ) -> str:
-        
+
         nodes_left = max_nodes
         seen = {}
-        token1 = TreeNode(value='PROD' , 
-                          children=[
-                                    ("PROD_TYPE" , TreeNode(value='SORT_TYPE')) , 
-                                    ("PROD_TERM" , TreeNode(value='PROD' , children=[("PROD_TERM" , TreeNode(value='EVAR')),
-                                                                                     ("PROD_TYPE" , TreeNode(value="REL"))
-                                                                                                             ]
-                                                                                                             ))])
-                                                                                                              
-        token2 = TreeNode(value='APP' , children=[("APP_FUN" , TreeNode(value='APP', children=[
-            ("APP_ARG" , TreeNode(value="REL")),
-            ("APP_FUN" , TreeNode(value="REL"))
-        ])), 
-                                                  ("APP_ARG" , TreeNode(value="REL"))
-                                                  
-                                                  ])
 
-        token3 = TreeNode(value='PROD' , children=[("PROD_TERM" , TreeNode(value='SORT_S_PROP')), 
-                                                  ("PROD_TYPE" , TreeNode(value="REL")) 
-                                                  ])
+        token = TreeNode(value='APP', children=[("APP_ARG", TreeNode(value='EVAR')),
+                                                ("APP_FUN", TreeNode(
+                                                    value="EVAR"))
+                                                ])
 
-        token4 = TreeNode(value='APP' , children=[("APP_ARG" , TreeNode(value='REL')), 
-                                                  ("APP_FUN" , TreeNode(value="REL")) 
-                                                  ])
+        # tokens from the tokenizer will come here.
+        sample_tokens_list = [token]
 
-        token5 = TreeNode(value='CASE', children=[("CASE_TERM" , TreeNode(value='REL'))])
-        token6 = TreeNode(value="LAMBDA" , children=[
-            ("LAMBDA_TYPE" , TreeNode(value="REL")),
-            ("LAMBDA_TERM" , TreeNode(value="LAMBDA" , children=[
-                ("LAMBDA_TYPE" , TreeNode(value="APP", children=[("APP_ARG" , TreeNode(value='REL')) , ("APP_FUN" , TreeNode(value='EVAR'))])),
-                ("LAMBDA_TERM" , TreeNode(value="CASE", children=[("CASE_TERM" , TreeNode(value='REL'))]))
-            ])),
-        ])
-
-        token7 = TreeNode(value="LET_IN" , children=[
-            ("LET_IN_TYPE" , TreeNode(value='DEFINITION')), ("LET_IN_DEF" , TreeNode(value="APP" , children=[("APP_FUN" , TreeNode(value="REL")) , ("APP_ARG" , TreeNode(value="REL"))]))])
-
-        sample_tokens_list = [token1 , token2 , token3 , token4 , token5 , token6 , token7] #tokens from the tokenizer will come here. 
-        
         def recurse(node: Node, depth, context_prefix):
             nonlocal seen
             nonlocal nodes_left
             if self.settings.show_tokenization:
-                children , new_token = self.match(node,sample_tokens_list)
+                children, new_token = self.match(node, sample_tokens_list)
             else:
                 children = node.children
                 new_token = ""
-                
+
             if node.label.is_rel:
                 children = []
-    
+
             enum = graph_api_capnp.Graph.Node.Label
-            node_prefix = self.get_node_prefix(node, enum, prefix, context_prefix)
-            id = node_prefix + str(node) 
+            node_prefix = self.get_node_prefix(
+                node, enum, prefix, context_prefix)
+            id = node_prefix + str(node)
             if id in seen:
                 return seen[id]
-            
+
             dot_id = f"c{self.node_counter}-{id}"
             nodes_left -= 1
             self.node_counter += 1
             if nodes_left < 0:
                 id = 'trunc' + str(self.node_counter)
                 dot.node(id, 'truncated')
-                return id , ""
-            
+                return id, ""
+
             shape, label, tooltip = node_label_map(node)
-            self.render_node(dot, node, shape, label, id=dot_id, tooltip=tooltip)
             if node.definition and not node in depth_ignore:
                 depth -= 1
-            
+
             cur_child_label_lis = []
             if depth >= 0:
                 if node.label.which == graph_api_capnp.Graph.Node.Label.evar:
                     # Find the evar-id
                     evarid = [c.label.proof_state.value for _, c in node.children
                               if c.label.which == graph_api_capnp.Graph.Node.Label.proofState][0]
-                    context_prefix = proof_state_prefix.get(evarid, context_prefix)
+                    context_prefix = proof_state_prefix.get(
+                        evarid, context_prefix)
 
-                #print("children" , children[0][1].label.which.name)
                 for c in children:
                     edge = c[0]
                     child = c[1]
@@ -599,32 +591,32 @@ class GraphVisualizator:
                         if not self.settings.show_trivial_evar_substs and substs[0] == substs[1]:
                             continue
                     cid, cur_child_label = recurse(child, depth,
-                                    before_prefix if edge == graph_api_capnp.EdgeClassification.evarSubstTerm
-                                    else context_prefix)
-                    
+                                                   before_prefix if edge == graph_api_capnp.EdgeClassification.evarSubstTerm
+                                                   else context_prefix)
+
                     cur_child_label_lis.append(cur_child_label)
-                    edge_name = inflection.camelize(apic.EdgeClassification(edge).name.lower())
+                    edge_name = inflection.camelize(
+                        apic.EdgeClassification(edge).name.lower())
                     if self.settings.show_edge_labels:
                         edge_label = edge_name
                     else:
                         edge_label = ""
                     dot.edge(dot_id, cid, label=edge_label, tooltip=edge_name, labeltooltip=edge_name,
-                                arrowtail=self.edge_arrow_map[edge], dir="both")
-                    
-            shape="rectangle"
+                             arrowtail=self.edge_arrow_map[edge], dir="both")
 
-            if new_token!="":
+            if new_token != "":
                 label = new_token
 
-            self.render_node(dot , node , shape , label , id=dot_id , tooltip=tooltip)
-            
-            seen[id] = (dot_id , new_token)
+            self.render_node(dot, node, shape, label,
+                             id=dot_id, tooltip=tooltip)
+
+            seen[id] = (dot_id, new_token)
             if node.label.which_raw in self.settings.unshare_nodes:
                 del seen[id]
-            return dot_id , new_token
-        
-        id , final_label = recurse(start, depth, before_prefix)
-        
+            return dot_id, new_token
+
+        id, final_label = recurse(start, depth, before_prefix)
+
         return id
 
     def definition(self, fname: Path, definition: int):
@@ -696,7 +688,7 @@ class GraphVisualizator:
                 for j, outcome in enumerate(step.outcomes):
                     before_id = outcome_to_id[(i, j)]
                     dot2.node(before_id, label='⬤', shape='circle', fontsize="7", height="0.25pt",
-                              URL = self.url_maker.outcome(fname, definition, i, j))
+                              URL=self.url_maker.outcome(fname, definition, i, j))
                     for after in outcome.after:
                         if outcome.before.id == after.id:
                             after_id = before_id + '-s'
@@ -707,7 +699,8 @@ class GraphVisualizator:
                         dot.edge(before_id, after_id, style=style)
                     if not outcome.after:
                         qedid = str('qed-'+str(i)+'-'+str(j))
-                        dot2.node(qedid, label='', shape='point', height='0.05', fillcolor='black')
+                        dot2.node(qedid, label='', shape='point',
+                                  height='0.05', fillcolor='black')
                         dot.edge(before_id, qedid)
 
         location = (self.path2location(fname) +
@@ -736,6 +729,7 @@ class GraphVisualizator:
         def node_label_map_with_ctx_names(context: Sequence[Node],
                                           context_text: Sequence[str]):
             mapping = {n: s for n, s in zip(context, context_text)}
+
             def nlm(node: Node):
                 enum = graph_api_capnp.Graph.Node.Label
                 which = node.label.which
@@ -746,7 +740,7 @@ class GraphVisualizator:
                     name = graphviz_escape(mapping[node])
                     return 'ellipse', truncate_string(name, 20), f"ContextDef {name}"
                 else:
-                        return node_label_map(node)
+                    return node_label_map(node)
             return nlm
 
         popups = []
@@ -772,17 +766,16 @@ class GraphVisualizator:
                 tactic_base_text = (t.base_text.replace('__argument_marker__', '_')
                                     .replace('private_constant_placeholder', '_'))
             dot2.attr('graph', label=f"Tactic\n{tactic_text}")
-            dot2.node('tactic', label = tactic_base_text)
+            dot2.node('tactic', label=tactic_base_text)
             for i, arg in enumerate(outcome.tactic_arguments):
                 if arg is None:
                     dot2.node(f"tactic-arg{i}", label=f"arg {i}: unknown")
                 else:
                     id = self.visualize_term(dot2, arg, depth=depth, prefix=prefix, before_prefix=prefix,
-                                        max_nodes=max_nodes, seen=seen)
+                                             max_nodes=max_nodes, seen=seen)
                     dot2.node(f"tactic-arg{i}", label=f"arg {i}")
                     dot2.edge(f"tactic-arg{i}", id)
                 dot2.edge('tactic', f"tactic-arg{i}")
-
 
         for ai, after in enumerate(outcome.after):
             with dot.subgraph(name='cluster_after' + str(ai)) as dot2:
@@ -790,7 +783,8 @@ class GraphVisualizator:
                           label=f"After state {ai}\n{graphviz_escape(truncate_string(after.conclusion_text, 70))}",
                           tooltip=f"After state {ai} {graphviz_escape(after.conclusion_text)}",
                           id=f'after-state{ai}')
-                popups.append((f'after-state{ai}', render_proof_state_text(after)))
+                popups.append(
+                    (f'after-state{ai}', render_proof_state_text(after)))
                 prefix = f'after{ai}'
                 self.visualize_term(dot2, after.root, depth=depth, prefix=prefix, before_prefix=prefix,
                                     max_nodes=max_nodes, seen=seen,
@@ -804,10 +798,11 @@ class GraphVisualizator:
                           id='proof-term')
                 popups.append(('proof-term', outcome.term_text))
                 prefix = 'term'
-                proof_state_prefix = {after.id: f'after{ai}' for ai, after in enumerate(outcome.after)}
+                proof_state_prefix = {
+                    after.id: f'after{ai}' for ai, after in enumerate(outcome.after)}
                 id = self.visualize_term(dot2, outcome.term, depth=depth, prefix=prefix, before_prefix='before',
-                                    proof_state_prefix=proof_state_prefix,
-                                    max_nodes=max_nodes, seen=seen)
+                                         proof_state_prefix=proof_state_prefix,
+                                         max_nodes=max_nodes, seen=seen)
                 # Sometimes the subgraph is completely empty because the term is contained in another subgraph.
                 # Therefore, we artificially add a extra root node
                 dot2.node('artificial-root', 'TermRoot')
@@ -835,8 +830,10 @@ class GraphVisualizator:
                 leaf['subdirs'].setdefault(d, {'files': [], 'subdirs': {}})
                 leaf = leaf['subdirs'][d]
             leaf['files'].append(f)
+
         def common_length(p1, p2):
             return len(os.path.commonprefix([p1, p2]))
+
         def retrieve_edges(rel, h, depth: int):
             for n in h['files']:
                 deps = {Path(*d.parts[:depth+1]) for d in self.trans_deps[n]
@@ -845,6 +842,7 @@ class GraphVisualizator:
             for d in h['subdirs']:
                 retrieve_edges(rel, h['subdirs'][d], depth)
             return rel
+
         def tunnel_hierarchy(dot, h, depth):
             if depth == len(expand_parts):
                 rel = retrieve_edges(defaultdict(set), h, depth)
@@ -861,7 +859,7 @@ class GraphVisualizator:
                         label += "</table>>"
                         url = None
                         shape = 'plaintext'
-                    dot.node(str(n), label, URL = url, shape = shape)
+                    dot.node(str(n), label, URL=url, shape=shape)
                 for n, deps in rel.items():
                     for d in deps:
                         dot.edge(str(n), str(d))
@@ -872,19 +870,21 @@ class GraphVisualizator:
                         cluster_name = 'cluster_' + str(cur_path)
                         with dot.subgraph(name=cluster_name) as dot2:
                             dot2.attr('graph', style="filled", fillcolor="white", label=d,
-                                      URL = self.url_maker.folder(Path(*expand_parts[:depth+1])))
+                                      URL=self.url_maker.folder(Path(*expand_parts[:depth+1])))
                             tunnel_hierarchy(dot2, h['subdirs'][d], depth+1)
 
         with dot.subgraph(name='cluster_root') as dot2:
             dot2.attr('graph', style="filled", fillcolor="white", label='dataset',
-                      URL = self.url_maker.root_folder())
+                      URL=self.url_maker.root_folder())
             tunnel_hierarchy(dot2, hierarchy, 0)
 
         location = self.path2location(expand_path)
         return GraphVisualizationOutput(dot.source, location, len(location) - 1)
 
+
 def transitive_closure(rel):
     trans_deps = defaultdict(set)
+
     def calc_trans_deps(a, n):
         for d in rel[n]:
             if d not in trans_deps[a]:
@@ -894,6 +894,7 @@ def transitive_closure(rel):
         calc_trans_deps(n, n)
     return trans_deps
 
+
 def transitive_reduction(rel):
     """This is not a real transitive reduction (NP-hard when it needs to be a subgraph).
     This is an approximation where all strongly connected components are smashed together
@@ -902,6 +903,7 @@ def transitive_reduction(rel):
     trans_deps = transitive_closure(rel)
     repr_items = defaultdict(set)
     representative = {}
+
     def calc_components(n):
         if n in representative:
             return
@@ -914,12 +916,14 @@ def transitive_reduction(rel):
     for n in list(rel.keys()):
         calc_components(n)
     repr_trans_rel = defaultdict(set)
+
     def calc_new_trans_deps(n):
         for d in trans_deps[n]:
             if n not in trans_deps[d]:
                 repr_trans_rel[n].add(representative[d])
     for n in list(rel.keys()):
         calc_new_trans_deps(n)
+
     def calc_sparse_deps(n):
         res = set()
         for d in repr_trans_rel[n]:
